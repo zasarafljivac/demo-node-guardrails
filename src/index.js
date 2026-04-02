@@ -4,6 +4,7 @@ const port = process.env.PORT || 3000;
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
+  console.log('run');
   res.end(
     JSON.stringify({
       message: 'Hello from the GitHub Actions guardrails demo',
