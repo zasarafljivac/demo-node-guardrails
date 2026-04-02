@@ -117,7 +117,6 @@ jobs:
 
   iac-scan:
     name: IaC Scan
-    if: ${{ hashFiles('**/*.tf') != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -128,12 +127,27 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Check whether Terraform files exist
+        id: tf-check
+        run: |
+          if find . -type f -name "*.tf" | grep -q .; then
+            echo "has_tf=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_tf=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: No Terraform files found
+        if: ${{ steps.tf-check.outputs.has_tf != 'true' }}
+        run: echo "No Terraform files found. Skipping Checkov."
+
       - name: Set up Python
+        if: ${{ steps.tf-check.outputs.has_tf == 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Run Checkov
+        if: ${{ steps.tf-check.outputs.has_tf == 'true' }}
         id: checkov
         continue-on-error: true
         run: |
@@ -142,11 +156,11 @@ jobs:
           checkov -d . -o sarif > reports/checkov.sarif
 
       - name: Upload Checkov SARIF
-        if: ${{ always() && hashFiles('reports/checkov.sarif') != '' }}
+        if: ${{ always() && steps.tf-check.outputs.has_tf == 'true' && hashFiles('reports/checkov.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: reports/checkov.sarif
 
       - name: Fail if Checkov found issues
-        if: ${{ steps.checkov.outcome != 'success' }}
+        if: ${{ steps.tf-check.outputs.has_tf == 'true' && steps.checkov.outcome != 'success' }}
         run: exit 1
