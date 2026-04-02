@@ -45,75 +45,97 @@ jobs:
   security-scans:
     name: Security Scans
     runs-on: ubuntu-latest
+    outputs:
+      has_lockfile: ${{ steps.lockfile-check.outputs.has_lockfile }}
     permissions:
       contents: read
-      security-events: write
-      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
           persist-credentials: false
 
+      - name: Detect Node lockfile
+        id: lockfile-check
+        run: |
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            echo "has_lockfile=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_lockfile=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Node
-        if: ${{ hashFiles('package-lock.json') != '' }}
+        if: ${{ steps.lockfile-check.outputs.has_lockfile == 'true' }}
         uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies safely
-        if: ${{ hashFiles('package-lock.json') != '' }}
+        if: ${{ steps.lockfile-check.outputs.has_lockfile == 'true' }}
         run: npm ci --ignore-scripts
 
       - name: Verify npm signatures and provenance
-        if: ${{ hashFiles('package-lock.json') != '' }}
+        if: ${{ steps.lockfile-check.outputs.has_lockfile == 'true' }}
         run: npm audit signatures
 
       - name: Scan for secrets with Gitleaks
-        uses: gitleaks/gitleaks-action@v2.3.9
+        uses: gitleaks/gitleaks-action@v2.3.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: OSV scan repository to SARIF
-        uses: google/osv-scanner-action@v2.3.5
-        with:
-          scan-args: >-
-            -r .
-            --format sarif
-            --output osv-repo.sarif
-
-      - name: Upload OSV repository SARIF
-        if: ${{ always() && hashFiles('osv-repo.sarif') != '' }}
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: osv-repo.sarif
-
       - name: Generate CycloneDX SBOM
-        if: ${{ hashFiles('package-lock.json') != '' }}
+        if: ${{ steps.lockfile-check.outputs.has_lockfile == 'true' }}
         run: npx --yes @cyclonedx/cyclonedx-npm@4.1.1 --output-file sbom.json --output-format JSON
 
       - name: Upload SBOM artifact
-        if: ${{ always() && hashFiles('sbom.json') != '' }}
-        uses: actions/upload-artifact@v7
+        if: ${{ steps.lockfile-check.outputs.has_lockfile == 'true' }}
+        uses: actions/upload-artifact@v4
         with:
           name: sbom
           path: sbom.json
 
-      - name: OSV scan SBOM to SARIF
-        if: ${{ hashFiles('sbom.json') != '' }}
-        uses: google/osv-scanner-action@v2.3.5
-        with:
-          scan-args: >-
-            --sbom=sbom.json
-            --format sarif
-            --output osv-sbom.sarif
+  osv-pr-scan:
+    name: OSV PR Scan
+    if: ${{ github.event_name == 'pull_request' }}
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.3.5
+    with:
+      scan-args: |-
+        --recursive
+        ./
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
 
-      - name: Upload OSV SBOM SARIF
-        if: ${{ always() && hashFiles('osv-sbom.sarif') != '' }}
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: osv-sbom.sarif
+  osv-full-scan:
+    name: OSV Full Scan
+    if: ${{ github.event_name != 'pull_request' }}
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.5
+    with:
+      scan-args: |-
+        --recursive
+        ./
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+  osv-sbom-scan:
+    name: OSV SBOM Scan
+    needs:
+      - security-scans
+    if: ${{ needs.security-scans.outputs.has_lockfile == 'true' }}
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.5
+    with:
+      download-artifact: sbom
+      results-file-name: osv-sbom.sarif
+      scan-args: |-
+        --sbom=sbom.json
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
 
   iac-scan:
     name: IaC Scan
