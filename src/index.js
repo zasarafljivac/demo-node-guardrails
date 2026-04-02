@@ -2,6 +2,8 @@ const http = require('http');
 
 const port = process.env.PORT || 3000;
 
+const ADD_INTENTIONAL_TOKEN = GITHUB_TOKEN="ghp_abcdefghijklmnopqrstuvwxyz1234567890";
+
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
   console.log('run');
