@@ -33,12 +33,12 @@ jobs:
       pull-requests: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
 
       - name: Review dependency changes
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v4.8.3
         with:
           fail-on-severity: moderate
 
@@ -51,15 +51,15 @@ jobs:
       actions: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
 
       - name: Set up Node
         if: ${{ hashFiles('package-lock.json') != '' }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies safely
@@ -71,12 +71,12 @@ jobs:
         run: npm audit signatures
 
       - name: Scan for secrets with Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: OSV scan repository to SARIF
-        uses: google/osv-scanner-action@v2
+        uses: google/osv-scanner-action@v2.3.5
         with:
           scan-args: >-
             -r .
@@ -85,7 +85,7 @@ jobs:
 
       - name: Upload OSV repository SARIF
         if: ${{ always() && hashFiles('osv-repo.sarif') != '' }}
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: osv-repo.sarif
 
@@ -95,14 +95,14 @@ jobs:
 
       - name: Upload SBOM artifact
         if: ${{ always() && hashFiles('sbom.json') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: sbom.json
 
       - name: OSV scan SBOM to SARIF
         if: ${{ hashFiles('sbom.json') != '' }}
-        uses: google/osv-scanner-action@v2
+        uses: google/osv-scanner-action@v2.3.5
         with:
           scan-args: >-
             --sbom=sbom.json
@@ -111,7 +111,7 @@ jobs:
 
       - name: Upload OSV SBOM SARIF
         if: ${{ always() && hashFiles('osv-sbom.sarif') != '' }}
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: osv-sbom.sarif
 
@@ -123,7 +123,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
 
@@ -142,7 +142,7 @@ jobs:
 
       - name: Set up Python
         if: ${{ steps.tf-check.outputs.has_tf == 'true' }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -157,7 +157,7 @@ jobs:
 
       - name: Upload Checkov SARIF
         if: ${{ always() && steps.tf-check.outputs.has_tf == 'true' && hashFiles('reports/checkov.sarif') != '' }}
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: reports/checkov.sarif
 
