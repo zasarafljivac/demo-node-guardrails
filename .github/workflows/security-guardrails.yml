@@ -53,6 +53,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
+          # Gitleaks computes a commit range for PR scans, so it needs the base history.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Detect Node lockfile
@@ -92,7 +94,7 @@ jobs:
 
       - name: Upload SBOM artifact
         if: ${{ steps.lockfile-check.outputs.has_lockfile == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: sbom.json
