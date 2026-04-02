@@ -1,0 +1,152 @@
+name: Security Guardrails
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: security-guardrails-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CI: "true"
+  NPM_CONFIG_IGNORE_SCRIPTS: "true"
+
+jobs:
+  dependency-review:
+    name: Dependency Review
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+
+  security-scans:
+    name: Security Scans
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        if: ${{ hashFiles('package-lock.json') != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies safely
+        if: ${{ hashFiles('package-lock.json') != '' }}
+        run: npm ci --ignore-scripts
+
+      - name: Verify npm signatures and provenance
+        if: ${{ hashFiles('package-lock.json') != '' }}
+        run: npm audit signatures
+
+      - name: Scan for secrets with Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: OSV scan repository to SARIF
+        uses: google/osv-scanner-action@v2
+        with:
+          scan-args: >-
+            -r .
+            --format sarif
+            --output osv-repo.sarif
+
+      - name: Upload OSV repository SARIF
+        if: ${{ always() && hashFiles('osv-repo.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: osv-repo.sarif
+
+      - name: Generate CycloneDX SBOM
+        if: ${{ hashFiles('package-lock.json') != '' }}
+        run: npx --yes @cyclonedx/cyclonedx-npm@4.1.1 --output-file sbom.json --output-format JSON
+
+      - name: Upload SBOM artifact
+        if: ${{ always() && hashFiles('sbom.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+
+      - name: OSV scan SBOM to SARIF
+        if: ${{ hashFiles('sbom.json') != '' }}
+        uses: google/osv-scanner-action@v2
+        with:
+          scan-args: >-
+            --sbom=sbom.json
+            --format sarif
+            --output osv-sbom.sarif
+
+      - name: Upload OSV SBOM SARIF
+        if: ${{ always() && hashFiles('osv-sbom.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: osv-sbom.sarif
+
+  iac-scan:
+    name: IaC Scan
+    if: ${{ hashFiles('**/*.tf') != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run Checkov
+        id: checkov
+        continue-on-error: true
+        run: |
+          python -m pip install --disable-pip-version-check --no-input checkov==3.2.513
+          mkdir -p reports
+          checkov -d . -o sarif > reports/checkov.sarif
+
+      - name: Upload Checkov SARIF
+        if: ${{ always() && hashFiles('reports/checkov.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/checkov.sarif
+
+      - name: Fail if Checkov found issues
+        if: ${{ steps.checkov.outcome != 'success' }}
+        run: exit 1

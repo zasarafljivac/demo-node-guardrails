@@ -1,0 +1,14 @@
+{
+  "name": "demo-node-guardrails",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Simple Node.js hello world application with GitHub Actions security guardrails for demos.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node -e \"console.log('No tests yet')\""
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
