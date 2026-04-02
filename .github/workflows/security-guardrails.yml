@@ -182,7 +182,7 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check --no-input checkov==3.2.513
           mkdir -p reports
-          checkov -d . -o sarif > reports/checkov.sarif
+          checkov -d . -o cli -o sarif --output-file-path console,reports/checkov.sarif
 
       - name: Upload Checkov SARIF
         if: ${{ always() && steps.tf-check.outputs.has_tf == 'true' && hashFiles('reports/checkov.sarif') != '' }}
