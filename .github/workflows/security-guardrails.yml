@@ -53,6 +53,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
+          # Gitleaks computes a commit range for PR scans, so it needs the base history.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Detect Node lockfile
