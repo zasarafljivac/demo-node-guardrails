@@ -80,9 +80,11 @@ jobs:
         run: npm audit signatures
 
       - name: Scan for secrets with Gitleaks
-        uses: gitleaks/gitleaks-action@v2.3.3
+        uses: gitleaks/gitleaks-action@v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+          GITLEAKS_ENABLE_SUMMARY: "true"
 
       - name: Generate CycloneDX SBOM
         if: ${{ steps.lockfile-check.outputs.has_lockfile == 'true' }}
